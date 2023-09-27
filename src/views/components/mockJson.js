@@ -90,7 +90,7 @@ const data = {
       targetRef: 'userTask_4',
       id: 'flow_3_4',
       conditionExpression:
-        '[发起者][单位(所属单位)] != "长沙综合交通枢纽建设投资有限公司"'
+        '[发起者][单位(所属单位)] != "建设投资有限公司"'
     },
     {
       sourceRef: 'userTask_4',

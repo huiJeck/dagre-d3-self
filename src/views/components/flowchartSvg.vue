@@ -151,7 +151,6 @@ import AddNodeDialog from './addNodeDialog.vue'
 import InfoNodeDialog from './infoNodeDialog.vue'
 import EdgesCondtionDialog from './addConditionDialog.vue'
 import EdgeInfoDialog from './edgeInfoDialog.vue'
-import { getInfo } from '@/api/login.js'
 import mockList from './mockJson.js'
 
 const userIconInit = require('@/assets/img/user.png')
@@ -302,10 +301,10 @@ export default {
             targetRef: 'userTask_4',
             id: 'flow_3_4',
             conditionExpression:
-              '[发起者][单位(所属单位)] != "长沙综合交通枢纽建设投资有限公司"'
+              '[发起者][单位(所属单位)] != "某地综合交通枢纽建设投资有限公司"'
             // data: {
             //   condition:
-            //     '[发起者][单位(所属单位)] != "长沙综合交通枢纽建设投资有限公司"',
+            //     '[发起者][单位(所属单位)] != "某地综合交通枢纽建设投资有限公司"',
             //   describe: '这是描述'
             // }
           },
@@ -1576,7 +1575,6 @@ export default {
     this.list.nodeInfos.unshift(mockList.startEvent)
     this.list.nodeInfos.push(mockList.endEvent)
     this.list.edges = mockList.sequenceFlows
-    getInfo()
   },
 
   mounted() {

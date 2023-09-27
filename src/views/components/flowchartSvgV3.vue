@@ -1,8 +1,17 @@
 <template>
-  <!-- 增加分支功能之前 -->
+  <!-- 批量替换之前 -->
   <div class="flow-chart">
     <div class="btns-area">
-      <el-button @click="svgToPng">下载</el-button>
+      <el-button class="revoke-btn" type="primary" @click="saveSubmit"
+        >保存</el-button
+      >
+      <el-button
+        class="revoke-btn"
+        :disabled="revokeDisabled"
+        @click="revokeFun"
+        >撤销</el-button
+      >
+      <el-button @click="svgToPng">导出</el-button>
       <div class="scale-box">
         <div class="scale-icon"><i class="el-icon-zoom-out"></i></div>
         <div class="slide">
@@ -141,6 +150,7 @@ import AddNodeDialog from './addNodeDialog.vue'
 import InfoNodeDialog from './infoNodeDialog.vue'
 import EdgesCondtionDialog from './addConditionDialog.vue'
 import EdgeInfoDialog from './edgeInfoDialog.vue'
+import { getInfo } from '@/api/login.js'
 import mockList from './mock.js'
 
 const userIconInit = require('@/assets/img/user.png')
@@ -160,6 +170,10 @@ export default {
   },
   data() {
     return {
+      revokeDisabled: true,
+      isAddBranchState: false,
+      branchStartNode: {},
+      branchEndNode: {},
       // 节点类型
       addNodeType: '',
       // 节点不可查看icon
@@ -223,6 +237,11 @@ export default {
           id: 3,
           label: '节点属性',
           code: 'A'
+        },
+        {
+          id: 4,
+          label: '增加分支',
+          code: 'A'
         }
       ],
       showEditDialog: false,
@@ -232,8 +251,8 @@ export default {
       list: {
         nodeInfos: [
           {
-            id: 'node1', // id
-            label: '发起者', // 节点名称
+            id: 'startEvent_1', // id
+            name: '发起者', // 节点名称
             // shape: 'circle', // 节点类型  rect,circle,ellipse,diamond,默认值为rect
             // class:'empty', // 空节点
             data: {
@@ -241,8 +260,8 @@ export default {
             }
           },
           {
-            id: 'node2',
-            label: '节点第二个',
+            id: 'userTask_3',
+            name: '节点第二个',
             data: {
               type: 'node',
               typeLabel: '审批',
@@ -251,8 +270,8 @@ export default {
             }
           },
           {
-            id: 'node3',
-            label: '节点3',
+            id: 'userTask_4',
+            name: '节点3',
             data: {
               type: 'node',
               typeLabel: '审批',
@@ -261,48 +280,48 @@ export default {
             }
           },
           {
-            id: 'node4',
-            label: '节点4',
+            id: 'userTask_5',
+            name: '节点4',
             data: {
               type: 'node',
               typeLabel: '审批'
             }
           },
           {
-            id: 'node5',
-            label: '节点5',
+            id: 'userTask_6',
+            name: '节点5',
             data: {
               type: 'node',
               typeLabel: '审批'
             }
           },
           {
-            id: 'node6',
-            label: '节点6',
+            id: 'userTask_7',
+            name: '节点6',
             data: {
               type: 'node',
               typeLabel: '审批'
             }
           },
           {
-            id: 'node7',
-            label: '节点7',
+            id: 'userTask_8',
+            name: '节点7',
             data: {
               type: 'node',
               typeLabel: '审批'
             }
           },
           {
-            id: 'node8',
-            label: '节点8',
+            id: 'userTask_9',
+            name: '节点8',
             data: {
               type: 'node',
               typeLabel: '审批'
             }
           },
           {
-            id: 'node9',
-            label: 'END',
+            id: 'endEvent_2',
+            name: 'END',
             data: {
               type: 'end'
             }
@@ -310,41 +329,49 @@ export default {
         ],
         edges: [
           {
-            source: 'node1', // 源头
-            target: 'node2' // 末尾
+            source: 'startEvent_1', // 源头
+            target: 'userTask_3', // 末尾
+            id: 'flow_1_3'
           },
           {
-            source: 'node2',
-            target: 'node3',
+            source: 'userTask_3',
+            target: 'userTask_4',
+            id: 'flow_3_4',
             data: {
               condition:
-                '[发起者][单位(所属单位)] != "长沙综合交通枢纽建设投资有限公司"',
+                '[发起者][单位(所属单位)] != "某地综合交通枢纽建设投资有限公司"',
               describe: '这是描述'
             }
           },
           {
-            source: 'node3',
-            target: 'node4'
+            source: 'userTask_4',
+            target: 'userTask_5',
+            id: 'flow_4_5'
           },
           {
-            source: 'node4',
-            target: 'node5'
+            source: 'userTask_5',
+            target: 'userTask_6',
+            id: 'flow_5_6'
           },
           {
-            source: 'node5',
-            target: 'node6'
+            source: 'userTask_6',
+            target: 'userTask_7',
+            id: 'flow_6_7'
           },
           {
-            source: 'node6',
-            target: 'node7'
+            source: 'userTask_7',
+            target: 'userTask_8',
+            id: 'flow_7_8'
           },
           {
-            source: 'node7',
-            target: 'node8'
+            source: 'userTask_8',
+            target: 'userTask_9',
+            id: 'flow_8_9'
           },
           {
-            source: 'node8',
-            target: 'node9'
+            source: 'userTask_9',
+            target: 'endEvent_2',
+            id: 'flow_9_2'
           }
         ]
       },
@@ -407,32 +434,39 @@ export default {
               style: 'stroke: #fff;fill:#B7B7B7;stroke-width:1.6px;',
               width: -20,
               ...item,
-              shape: 'circle'
+              shape: 'circle',
+              label: ''
             })
           } else {
             const typeLabelHtml = `[${item.data && item.data.typeLabel}]`
             const finishedIconHtml = `<img style="position: absolute;right: -14px;top: 16px;width: 18px;" src="${this.finishedIcon}">`
             const unreadableIconHtml = `<img style="position: absolute;right: -14px;top: 16px;width: 18px;" src="${this.unreadableIcon}">`
+            const branchDisabledStyle = `opacity:0.6;${
+              item.data && item.data.type == 'end'
+                ? 'fill: #b7b7b7;'
+                : item.data && item.data.type == 'start'
+                ? 'fill: #62b200;'
+                : 'fill: #4b90de;'
+            }`
+            const nodeStyle = `${
+              this.initCurId === item.id ? 'stroke: #f6b74d;' : 'stroke: #fff;'
+            }stroke-width:5px;${
+              item.data && item.data.type == 'end'
+                ? 'fill: #b7b7b7;'
+                : item.data && item.data.type == 'start'
+                ? 'fill: #62b200;'
+                : 'fill: #4b90de;'
+            }`
             this.gGraph.setNode(item.id, {
               ...item,
               class: `node-style`,
               shape: 'circle',
-              style: `${
-                this.initCurId === item.id
-                  ? 'stroke: #f6b74d;'
-                  : 'stroke: #fff;'
-              }stroke-width:5px;${
-                item.data && item.data.type == 'end'
-                  ? 'fill: #b7b7b7;'
-                  : item.data && item.data.type == 'start'
-                  ? 'fill: #62b200;'
-                  : 'fill: #4b90de;'
-              }`,
+              style: item.branchDisabled ? branchDisabledStyle : nodeStyle,
               labelType: 'html', //可以设置文本以及 html 格式，默认为文本格式
               label:
                 item.data && item.data.type == 'end'
                   ? '<div style="color:#fff;font-size:12px">END</div>'
-                  : `<div class="node-label-html"><span class="node-label"> <img style="width:24px;margin-top:2px" src="${
+                  : `<div class="node-label-html"><span class="node-label" style="width:24px;height:32px"> <img style="width:24px;" src="${
                       item.data.role == 'station'
                         ? this.stationIcon
                         : item.data.role == 'role'
@@ -445,7 +479,7 @@ export default {
                         ? unreadableIconHtml
                         : ''
                     }<p class="node-label-text" style="position: absolute;left: -19px;top: 22px;width: 62px;text-align: center; display: block;" ><span>${
-                      item.label
+                      item.name
                     }</span><span class="process"style=" display: block;opacity: 0.5;font-size: 0.6rem;" >${
                       item.data && item.data.typeLabel ? typeLabelHtml : ''
                     }</span></p></div>`
@@ -515,6 +549,7 @@ export default {
           return item.target == e.w
         })
         this.curEdgeObj = code
+        if (this.isAddBranchState) return
         this.showEditLineDialog = true
       })
 
@@ -536,6 +571,19 @@ export default {
         code = this.list.nodeInfos.filter(item => {
           return item.id == e
         })
+        // 增加分支点击节点
+        if (code[0].branchDisabled === false) {
+          this.branchEndNode = code[0]
+          if (this.branchEndNode.id === this.branchStartNode.id) {
+            this.initBranchDisabledFun(0)
+          } else {
+            this.addBranchSubmit()
+          }
+          return
+        } else if (code[0].branchDisabled === true) {
+          return
+        }
+
         const codeData = code[0] && code[0].data
         if (
           (code[0] && code[0].disabled) ||
@@ -577,15 +625,20 @@ export default {
     },
 
     // 添加串行节点
-    addCxFun(arr) {
+    addCxFun(arr, curNodeIndex) {
       let e = this.curNodeObj[0].id
       // 添加串行节点
       // this.list.nodeInfos = this.list.nodeInfos.concat({
       //   id: e + '11',
       //   label: '节点' + e + '11'
       // })
-      // this.list.nodeInfos = this.list.nodeInfos.concat(arr[0])
-      this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      // 反转数组整理节点顺序
+      const reverseArr = arr.slice().reverse()
+      reverseArr &&
+        reverseArr.forEach(q => {
+          this.list.nodeInfos.splice(curNodeIndex + 1, 0, q)
+        })
+
       this.list.edges = this.list.edges.map(q => {
         if (q.source == e) {
           this.nextNode = q.target
@@ -640,35 +693,54 @@ export default {
       //     target: this.nextNode
       //   })
 
-      localStorage.setItem('list', JSON.stringify(this.list))
-      this.initFlow(1)
+      this.initBranchDisabledFun()
     },
 
     // 添加并行节点
-    addBxFun(arr) {
+    addBxFun(arr, curNodeIndex) {
       let e = this.curNodeObj[0].id
       if (arr && arr.length < 2) {
         this.$message.error('添加并行节点至少选择两条数据')
         return
       }
 
-      const randomNum = Math.floor(Math.random() * 100) + ''
       // 添加空节点（创建空节点视觉优化链接线汇交点）
-      this.list.nodeInfos = this.list.nodeInfos.concat(
-        {
-          id: e + randomNum + 'empty01',
-          label: '',
-          shape: 'ellipse',
-          class: 'empty'
-        },
-        {
-          id: e + randomNum + 'empty01empty01',
-          label: '',
-          shape: 'ellipse',
-          class: 'empty'
-        }
-      )
-      this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      const randomNum = Math.floor(Math.random() * 100) + ''
+      // this.list.nodeInfos = this.list.nodeInfos.concat(
+      //   {
+      //     id: e + randomNum + '_empty01',
+      //     label: '',
+      //     shape: 'ellipse',
+      //     class: 'empty'
+      //   },
+      //   {
+      //     id: e + randomNum + '_empty01empty01',
+      //     label: '',
+      //     shape: 'ellipse',
+      //     class: 'empty'
+      //   }
+      // )
+      // this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      this.list.nodeInfos.splice(curNodeIndex + 1, 0, {
+        id: e + randomNum + '_empty01empty01',
+        name: '',
+        shape: 'ellipse',
+        class: 'empty'
+      })
+      // 反转数组整理节点顺序
+      const reverseArr = arr.slice().reverse()
+      reverseArr &&
+        reverseArr.forEach(q => {
+          this.list.nodeInfos.splice(curNodeIndex + 1, 0, q)
+        })
+
+      this.list.nodeInfos.splice(curNodeIndex + 1, 0, {
+        id: e + randomNum + '_empty01',
+        name: '',
+        shape: 'ellipse',
+        class: 'empty'
+      })
+
       this.list.edges = this.list.edges.map(q => {
         if (q.source == e) {
           this.nextNode = q.target
@@ -683,7 +755,7 @@ export default {
       this.list.edges =
         this.list.edges &&
         this.list.edges.concat({
-          source: e + randomNum + 'empty01empty01',
+          source: e + randomNum + '_empty01empty01',
           target: this.nextNode
         })
       // 动态遍历添加多条并行节点
@@ -694,7 +766,7 @@ export default {
         })
       const midItemObjBx1 = midItemArr.map(q => {
         let obj = {
-          source: e + randomNum + 'empty01',
+          source: e + randomNum + '_empty01',
           target: q
         }
         return obj
@@ -702,7 +774,7 @@ export default {
       const midItemObjBx2 = midItemArr.map(q => {
         let obj = {
           source: q,
-          target: e + randomNum + 'empty01empty01'
+          target: e + randomNum + '_empty01empty01'
         }
         return obj
       })
@@ -711,17 +783,132 @@ export default {
       this.list.edges =
         this.list.edges &&
         this.list.edges.concat(
-          { source: e, target: e + randomNum + 'empty01' },
+          { source: e, target: e + randomNum + '_empty01' },
           ...midItemObjBx1,
           ...midItemObjBx2
         )
 
-      localStorage.setItem('list', JSON.stringify(this.list))
-      this.initFlow(1)
+      this.initBranchDisabledFun()
+    },
+
+    // 添加分支会签
+    addBranchFun(arr, curNodeIndex) {
+      const hqStartObj = this.list.edges.filter(q => {
+        return q.target == this.branchStartNode.id
+      })
+      const hqStartId = hqStartObj[0].source
+      const hqEndObj = this.list.edges.filter(q => {
+        return q.source == this.branchEndNode.id
+      })
+      const hqEndId = hqEndObj[0].target
+
+      const e = hqStartId
+
+      // 若在无并行场景添加会签
+      const isCxEnd = hqEndId.includes('empty01')
+      const isCxStart = hqStartId.includes('empty01')
+      const isCx = !(isCxEnd && isCxStart)
+      if (isCx) {
+        let e = this.branchEndNode.id
+        // 获取点击节点在流程中的位置
+        const flowchartArr = this.list.nodeInfos.map(q => {
+          return q.id
+        })
+        const branchEndNodeIndex = flowchartArr.indexOf(e)
+        this.list.nodeInfos.splice(branchEndNodeIndex + 1, 0, {
+          id: e + '_empty01empty01',
+          name: '',
+          shape: 'ellipse',
+          class: 'empty'
+        })
+      }
+      // this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      // 反转数组整理节点顺序
+      const reverseArr = arr.slice().reverse()
+      reverseArr &&
+        reverseArr.forEach(q => {
+          this.list.nodeInfos.splice(curNodeIndex, 0, q)
+        })
+      if (isCx) {
+        // this.list.nodeInfos = this.list.nodeInfos.concat(
+        this.list.nodeInfos.splice(curNodeIndex, 0, {
+          id: e + '_empty01',
+          name: '',
+          shape: 'ellipse',
+          class: 'empty'
+        })
+        if ((isCxEnd && !isCxStart) || (isCxStart && !isCxEnd)) {
+          // 删除原来的对象重新生成
+          this.list.edges = this.list.edges.filter(q => {
+            return (
+              q.source != this.branchEndNode.id &&
+              q.target != this.branchStartNode.id
+            )
+          })
+        } else {
+          // 删除原来的对象重新生成
+          this.list.edges = this.list.edges.filter(q => {
+            return q.source != e && q.target != hqEndId
+          })
+        }
+        this.list.edges = this.list.edges.filter(q => {
+          return q
+        })
+      }
+      // 动态遍历添加多条会签节点
+      const midItemArr =
+        arr &&
+        arr.map(q => {
+          return q.id
+        })
+      const midItemObjHq1 = midItemArr.map(q => {
+        let obj = {
+          source: isCx ? e + '_empty01' : hqStartId,
+          target: q
+        }
+        return obj
+      })
+      const midItemObjHq2 = midItemArr.map(q => {
+        let obj = {
+          source: q,
+          // target: hqEndId
+          target: isCx ? this.branchEndNode.id + '_empty01empty01' : hqEndId
+        }
+        return obj
+      })
+      // 添加会签链接关系
+      this.list.edges =
+        this.list.edges &&
+        this.list.edges.concat(...midItemObjHq1, ...midItemObjHq2)
+      // 串行添加会签特殊处理
+      if (isCx) {
+        this.list.edges =
+          this.list.edges &&
+          this.list.edges.concat(
+            {
+              source: e + '_empty01',
+              target: this.branchStartNode.id
+            },
+            {
+              source: this.branchEndNode.id,
+              target: this.branchEndNode.id + '_empty01empty01'
+            },
+            {
+              source: this.branchEndNode.id + '_empty01empty01',
+              target: hqEndId
+            },
+            {
+              source: hqStartId,
+              target: e + '_empty01'
+            }
+          )
+      }
+
+      this.initBranchDisabledFun()
     },
 
     // 添加会签节点
-    addHqFun(arr) {
+    addHqFun(arr, curNodeIndex) {
       let e = this.curNodeObj[0].id
       const hqStartObj = this.list.edges.filter(q => {
         return q.target == e
@@ -731,27 +918,35 @@ export default {
         return q.source == e
       })
       const hqEndId = hqEndObj[0].target
-      this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      // this.list.nodeInfos = this.list.nodeInfos.concat(arr)
 
       // 若在无并行场景添加会签
       const isCxEnd = hqEndId.includes('empty01')
       const isCxStart = hqStartId.includes('empty01')
       const isCx = !(isCxEnd && isCxStart)
       if (isCx) {
-        this.list.nodeInfos = this.list.nodeInfos.concat(
-          {
-            id: e + 'empty01',
-            label: '',
-            shape: 'ellipse',
-            class: 'empty'
-          },
-          {
-            id: e + 'empty01empty01',
-            label: '',
-            shape: 'ellipse',
-            class: 'empty'
-          }
-        )
+        // this.list.nodeInfos = this.list.nodeInfos.concat(
+        this.list.nodeInfos.splice(curNodeIndex + 1, 0, {
+          id: e + '_empty01empty01',
+          name: '',
+          shape: 'ellipse',
+          class: 'empty'
+        })
+      }
+      // 反转数组整理节点顺序
+      const reverseArr = arr.slice().reverse()
+      reverseArr &&
+        reverseArr.forEach(q => {
+          this.list.nodeInfos.splice(curNodeIndex + 1, 0, q)
+        })
+      if (isCx) {
+        // this.list.nodeInfos = this.list.nodeInfos.concat(
+        this.list.nodeInfos.splice(curNodeIndex, 0, {
+          id: e + '_empty01',
+          name: '',
+          shape: 'ellipse',
+          class: 'empty'
+        })
         // 删除原来的对象重新生成
         this.list.edges = this.list.edges.filter(q => {
           return q.source != e && q.target != e
@@ -768,7 +963,7 @@ export default {
         })
       const midItemObjHq1 = midItemArr.map(q => {
         let obj = {
-          source: isCx ? e + 'empty01' : hqStartId,
+          source: isCx ? e + '_empty01' : hqStartId,
           target: q
         }
         return obj
@@ -777,7 +972,7 @@ export default {
         let obj = {
           source: q,
           // target: hqEndId
-          target: isCx ? e + 'empty01empty01' : hqEndId
+          target: isCx ? e + '_empty01empty01' : hqEndId
         }
         return obj
       })
@@ -791,29 +986,28 @@ export default {
           this.list.edges &&
           this.list.edges.concat(
             {
-              source: e + 'empty01',
+              source: e + '_empty01',
               target: e
             },
             {
               source: e,
-              target: e + 'empty01empty01'
+              target: e + '_empty01empty01'
             },
             {
-              source: e + 'empty01empty01',
+              source: e + '_empty01empty01',
               target: hqEndId
             },
             {
               source: hqStartId,
-              target: e + 'empty01'
+              target: e + '_empty01'
             }
           )
       }
-      localStorage.setItem('list', JSON.stringify(this.list))
-      this.initFlow(1)
+      this.initBranchDisabledFun()
     },
 
     // 添加下节点并行
-    addNextBxFun(arr) {
+    addNextBxFun(arr, curNodeIndex) {
       let e = this.curNodeObj[0].id
       const nextNodeArr = this.list.edges.filter(q => {
         return q.source == this.curNodeObj[0].id
@@ -828,7 +1022,7 @@ export default {
         this.$message.error('下节点不可添加并行节点')
         return
       }
-      this.addHqFun(arr)
+      this.addHqFun(arr, curNodeIndex + 1)
     },
 
     // 取出两个数组相同的元素
@@ -844,8 +1038,28 @@ export default {
       return newArr
     },
 
+    // 撤销
+    revokeFun() {
+      // 先删除原来的所有节点然后重新渲染
+      this.list.nodeInfos &&
+        this.list.nodeInfos.forEach((item, index) => {
+          this.gGraph.removeNode(item.id)
+        })
+      this.list = JSON.parse(localStorage.getItem('beforeData'))
+      this.revokeDisabled = true
+      this.initFlow()
+    },
+
     // 提交添加节点信息
-    sumbitAddNodeFun(arr) {
+    sumbitAddNodeFun(arrData) {
+      // 生成节点随机数id
+      let arr = JSON.parse(JSON.stringify(arrData)).map(q => {
+        q.id = `userTask_${this.randNum()}`
+        if (q.label) {
+          q.name = q.label
+        }
+        return q
+      })
       // 判断流程中是否已有选中节点
       const selectedArr = arr.map(q => {
         return q.id
@@ -853,24 +1067,34 @@ export default {
       const flowchartArr = this.list.nodeInfos.map(q => {
         return q.id
       })
-      const repeatArr = this.getArrRepeatFun(flowchartArr, selectedArr)
-      if (repeatArr && repeatArr.length > 0) {
-        this.$message.error('所选节点有与流程中节点重复，请重新选择其他节点')
-        return
-      }
+      // const repeatArr = this.getArrRepeatFun(flowchartArr, selectedArr)
+      // if (repeatArr && repeatArr.length > 0) {
+      //   this.$message.error('所选节点有与流程中节点重复，请重新选择其他节点')
+      //   return
+      // }
+
+      // 存储之前数据撤回的时候用
+      localStorage.setItem('beforeData', JSON.stringify(this.list))
+      this.revokeDisabled = false
+      let e = this.curNodeObj[0].id
+      // 获取点击节点在流程中的位置
+      const curNodeIndex = flowchartArr.indexOf(e)
       // isStrand 1为串行 2为并行 3为会签 4为下节点并行
       switch (this.isStrand) {
         case 1:
-          this.addCxFun(arr)
+          this.addCxFun(arr, curNodeIndex)
           break
         case 2:
-          this.addBxFun(arr)
+          this.addBxFun(arr, curNodeIndex)
           break
         case 3:
-          this.addHqFun(arr)
+          this.addHqFun(arr, curNodeIndex)
           break
         case 4:
-          this.addNextBxFun(arr)
+          this.addNextBxFun(arr, curNodeIndex)
+          break
+        case 5:
+          this.addBranchFun(arr, curNodeIndex)
           break
       }
       // this.$message.success('添加节点成功')
@@ -896,7 +1120,7 @@ export default {
     sumbitNodeInfo(val) {
       this.list.nodeInfos = this.list.nodeInfos.map(q => {
         if (q.id == val.id) {
-          q.label = val.label
+          q.name = val.name
           q.data.typeLabel = `[${val.data && val.data.typeLabel}]`
         }
         return q
@@ -973,9 +1197,118 @@ export default {
           this.showInfoNodeDialog = true
           break
         case 4:
-          console.log(id, '下节点并行')
-          this.showAddNodeDialog = true
+          console.log(id, '增加分支')
+          this.addBranch()
           break
+      }
+    },
+
+    // 空节点之间不可增加分支
+    branchNodeDisabled() {
+      const nextNodeArr = this.list.edges.filter(q => {
+        return q.source == this.curNodeObj[0].id
+      })
+      const beforeNodeArr = this.list.edges.filter(q => {
+        return q.target == this.curNodeObj[0].id
+      })
+      const nextNodeInfo = this.list.nodeInfos.filter(q => {
+        return q.id == (nextNodeArr && nextNodeArr[0].target)
+      })
+      const beforNodeInfo = this.list.nodeInfos.filter(q => {
+        return q.id == (beforeNodeArr && beforeNodeArr[0].source)
+      })
+      const beforeEmptyNode =
+        beforNodeInfo[0] && beforNodeInfo[0].id.includes('empty01')
+      const nextEmptyNode =
+        nextNodeInfo[0] && nextNodeInfo[0].id.includes('empty01')
+
+      const nextEndNode =
+        nextNodeInfo[0] &&
+        nextNodeInfo[0].data &&
+        nextNodeInfo[0].data.type === 'end'
+      if ((beforeEmptyNode && nextEmptyNode) || nextEndNode) {
+        this.$message.error('该节点不支持增加分支')
+        return true
+      } else {
+        return false
+      }
+    },
+
+    // 增加分支
+    async addBranch() {
+      this.isAddBranchState = true
+      let e = this.curNodeObj[0].id
+      if (this.branchNodeDisabled()) return
+
+      this.branchStartNode = this.curNodeObj[0]
+      let isAfter = false
+      this.list.nodeInfos.map(q => {
+        if (q.id === e) {
+          isAfter = true
+        }
+        if (q.id.split('empty01').length - 1 === 1) {
+          isAfter = false
+        } else if (q.id.includes('_empty01empty01')) {
+          isAfter = true
+        }
+        if (!isAfter) {
+          q.branchDisabled = true
+          console.log(q.name)
+        } else {
+          if (q.data && q.data.type === 'end') {
+            q.branchDisabled = true
+          } else {
+            q.branchDisabled = false
+          }
+        }
+
+        console.log(q.name + q.branchDisabled, 'isAfter---')
+      })
+      this.initFlow()
+    },
+
+    // 确认是否增加分支
+    addBranchSubmit() {
+      this.$confirm(
+        `确定要在[${this.curNodeObj[0].name} - ${this.branchEndNode.name}]并行添加分支吗`,
+        '提示',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+        .then(() => {
+          // 添加并行分支
+          this.addNodeType = 'branch'
+          this.showAddNodeDialog = true
+        })
+        .catch(() => {
+          this.isAddBranchState = false
+          this.list.nodeInfos.forEach(q => {
+            q.branchDisabled = ''
+          })
+          localStorage.setItem('list', JSON.stringify(this.list))
+          this.initFlow()
+        })
+    },
+
+    // 去掉添加分支增加的临时属性
+    initBranchDisabledFun(type) {
+      this.list.nodeInfos.forEach(q => {
+        q.branchDisabled = ''
+      })
+      this.list.edges = this.list.edges.map(q => {
+        q.id = `flow_${q.source.substring(
+          q.source.lastIndexOf('_') + 1
+        )}_${q.target.substring(q.target.lastIndexOf('_') + 1)}`
+        return q
+      })
+      localStorage.setItem('list', JSON.stringify(this.list))
+      if (type === 0) {
+        this.initFlow()
+      } else {
+        this.initFlow(1)
       }
     },
 
@@ -1006,7 +1339,7 @@ export default {
     // 删除节点
     deleteNode() {
       this.$confirm(
-        `此操作将永久删除『${this.curNodeObj[0].label}』, 是否继续?`,
+        `此操作将永久删除『${this.curNodeObj[0].name}』, 是否继续?`,
         '提示',
         {
           confirmButtonText: '确定',
@@ -1116,6 +1449,7 @@ export default {
         a.download = `${name}.${type}`
         a.href = canvas.toDataURL(`image/${type}`)
         a.click()
+        localStorage.setItem('svgImgValue', canvas.toDataURL(`image/${type}`))
       }
     },
 
@@ -1130,7 +1464,7 @@ export default {
               console.log(j, 'j')
             } else {
               // target包含0则判断为空节点
-              if (j.target.indexOf('empty01empty01') == -1) {
+              if (j.target.indexOf('_empty01empty01') == -1) {
                 j.empty = false
               }
             }
@@ -1206,16 +1540,51 @@ export default {
       this.renderFun()
       this.selectEvent()
       this.scale()
-
+      this.isAddBranchState = false
       if (num === 1) {
         this.$message.success('添加节点成功')
         this.isStrand = 1
       }
+    },
+    // 生成随机数
+    randNum() {
+      let rand = ''
+      for (let i = 0; i < 19; i++) {
+        rand += Math.floor(Math.random() * 10)
+      }
+      return rand
+    },
+    // 保存
+    saveSubmit() {
+      console.log(this.list, '提交成功')
+      this.list.edges = JSON.parse(JSON.stringify(this.list.edges)).map(q => {
+        q.sourceRef = q.source
+        q.targetRef = q.target
+        return {
+          sourceRef: q.source,
+          targetRef: q.target,
+          id: q.id,
+          conditionExpression: (q.data && q.data.comndtion) || ''
+        }
+      })
+      const postData = {
+        id: '',
+        name: '模板一',
+        documentation: '流程基本描述',
+        startEvent: this.list.nodeInfos[0],
+        endEvent: this.list.nodeInfos[this.list.nodeInfos.length - 1],
+        userTasks: this.list.nodeInfos.slice(1, this.list.nodeInfos.length - 1),
+        sequenceFlows: this.list.edges
+      }
+      console.log(postData)
+      const svgImgValueItem = localStorage.getItem('svgImgValue')
+      // console.log(svgImgValueItem, 'base64')
     }
   },
   created() {
     this.list = JSON.parse(localStorage.getItem('list')) || this.list
     // this.list = mockList
+    getInfo()
   },
   mounted() {
     this.initFlow()
@@ -1238,11 +1607,11 @@ ul {
   // height: calc(100% - 80px);
   min-height: 100%;
   background: url('~@/assets/img/background.png') repeat 0 0;
-  background-size: 18px 18px;
+  background-size: 16px 16px;
   .svg-box {
     width: 100%;
     // background-color: #f5f5f5;
-    border: dashed 2px #f0f0f0;
+    border: dashed 2px #adc3db;
     box-sizing: border-box;
   }
 }
@@ -1369,6 +1738,9 @@ svg {
     text-align: center;
   }
 }
+::v-deep .node-style-disabled {
+  fill: #dcdcdc;
+}
 .start {
   fill: #62b200;
 }
@@ -1435,5 +1807,8 @@ svg {
 }
 .node-edit-list {
   width: 160px;
+}
+.revoke-btn {
+  margin-left: 14px;
 }
 </style>

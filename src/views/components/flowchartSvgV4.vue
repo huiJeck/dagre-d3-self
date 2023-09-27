@@ -1,11 +1,10 @@
 <template>
-  <!-- 20210524动态增加节点之前的源码备份 -->
+  <!-- 增加分支功能之前 -->
   <div class="flow-chart">
     <div class="btns-area">
       <el-button @click="svgToPng">下载</el-button>
       <div class="scale-box">
         <div class="scale-icon"><i class="el-icon-zoom-out"></i></div>
-
         <div class="slide">
           <el-slider
             v-model="scaleValue"
@@ -19,14 +18,16 @@
         <div class="value">{{ scaleValue }}%</div>
       </div>
     </div>
+    <!-- svg -->
     <div class="flowchart">
       <svg class="svg-box">
         <g class="g-box" />
         <rect />
       </svg>
     </div>
+
     <!-- 节点编辑列表 -->
-    <el-dialog
+    <!-- <el-dialog
       :title="nodeEditTitle"
       width="300px"
       :visible.sync="showEditDialog"
@@ -34,7 +35,9 @@
     >
       <ul class="edit-list">
         <li
-          v-for="item in editListArr"
+          v-for="item in curNodeObj[0] && curNodeObj[0].data.type == 'start'
+            ? filterArr(editListArr)
+            : editListArr"
           :key="item.id"
           @click="nodeClickEvent(item.id)"
         >
@@ -42,13 +45,15 @@
           <div>{{ item.code }}</div>
         </li>
       </ul>
-    </el-dialog>
+    </el-dialog> -->
+
     <!-- 链接线条件编辑列表 -->
-    <el-dialog
+    <!-- <el-dialog
       title="操作 (条件配置)"
       width="300px"
       :visible.sync="showEditLineDialog"
       class="edit-list-dialog"
+      :modal="false"
     >
       <ul class="edit-list">
         <li
@@ -60,14 +65,18 @@
           <div>{{ item.code }}</div>
         </li>
       </ul>
-    </el-dialog>
+    </el-dialog> -->
+
     <!-- 添加节点 -->
     <AddNodeDialog
       v-if="showAddNodeDialog"
+      :addNodeType="addNodeType"
+      :nodeInfos="list.nodeInfos"
       @upIsStrand="upIsStrand"
       @sumbitAddNode="sumbitAddNodeFun"
       @cancelAddNode="cancelAddNode"
     ></AddNodeDialog>
+
     <!-- 节点属性 -->
     <InfoNodeDialog
       v-if="showInfoNodeDialog"
@@ -76,18 +85,52 @@
       @sumbitNodeInfo="sumbitNodeInfo"
     >
     </InfoNodeDialog>
-    <!-- 添加链接线条件 -->
+
+    <!-- 添加连接线条件 -->
     <EdgesCondtionDialog
       v-if="showAddCondtionDialog"
       @cancelAddNode="cancelAddCondition"
       @sumbitAddNode="sumbitAddCondition"
     ></EdgesCondtionDialog>
+
     <!-- 连接条件信息 -->
     <EdgeInfoDialog
       v-if="showEdgeInfoDialog"
       :info="edgeInfo"
       @cancelDialog="cancelDialog"
     ></EdgeInfoDialog>
+
+    <!-- 点击连接线鼠标右侧菜单列表 -->
+    <div v-show="showEditLineDialog">
+      <div class="dialog-mask" @click="showEditLineDialog = false"></div>
+      <div class="edit-list-position edge-edit-list" id="edgeMenuDialog">
+        <ul class="edit-list">
+          <li
+            v-for="item in editLineListArr"
+            :key="item.id"
+            @click="edgesClickEvent(item.id)"
+          >
+            <div>{{ item.label }}</div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 点击节点鼠标右侧菜单列表 -->
+    <div v-show="showEditDialog">
+      <div class="dialog-mask" @click="showEditDialog = false"></div>
+      <div class="edit-list-position node-edit-list" id="nodeMenuDialog">
+        <ul class="edit-list">
+          <li
+            v-for="item in editListArrFilter(editListArr)"
+            :key="item.id"
+            @click="nodeClickEvent(item.id)"
+          >
+            <div>{{ item.label }}（{{ item.code }}）</div>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -98,7 +141,14 @@ import AddNodeDialog from './addNodeDialog.vue'
 import InfoNodeDialog from './infoNodeDialog.vue'
 import EdgesCondtionDialog from './addConditionDialog.vue'
 import EdgeInfoDialog from './edgeInfoDialog.vue'
+import mockList from './mock.js'
+
 const userIconInit = require('@/assets/img/user.png')
+const departIconInit = require('@/assets/img/depart.png')
+const stationIconInit = require('@/assets/img/station.png')
+const conditionIconInit = require('@/assets/img/condition.png')
+const finishedIconInit = require('@/assets/img/finished.png')
+const unreadableIconInit = require('@/assets/img/unreadable.png')
 
 export default {
   name: 'flowchartSvg',
@@ -110,6 +160,18 @@ export default {
   },
   data() {
     return {
+      // 节点类型
+      addNodeType: '',
+      // 节点不可查看icon
+      unreadableIcon: unreadableIconInit,
+      finishedIcon: finishedIconInit,
+      // 初始化用户当前节点
+      initCurId: 'node4',
+      clientPosition: {},
+      // icon显示
+      stationIcon: stationIconInit,
+      roleIcon: departIconInit,
+      conditionIcon: conditionIconInit,
       userIcon: userIconInit,
       showEdgeInfoDialog: false,
       edgeInfo: {},
@@ -166,14 +228,13 @@ export default {
       showEditDialog: false,
       showAddNodeDialog: false,
       curNodeObj: {},
-      isStrand: 1, // 1为串行  2位并行 3为会签
+      isStrand: 1, // 1为串行  2位并行 3为会签 4为下节点并行
       list: {
         nodeInfos: [
-          // 节点数组
           {
             id: 'node1', // id
             label: '发起者', // 节点名称
-            shape: 'circle', // 节点类型  rect,circle,ellipse,diamond,默认值为rect
+            // shape: 'circle', // 节点类型  rect,circle,ellipse,diamond,默认值为rect
             // class:'empty', // 空节点
             data: {
               type: 'start'
@@ -183,59 +244,81 @@ export default {
             id: 'node2',
             label: '节点第二个',
             data: {
-              typeLabel: '[审批]'
+              type: 'node',
+              typeLabel: '审批',
+              finished: true,
+              unreadable: false
             }
           },
           {
             id: 'node3',
-            label: '节点3122'
+            label: '节点3',
+            data: {
+              type: 'node',
+              typeLabel: '审批',
+              finished: false,
+              unreadable: true
+            }
           },
           {
             id: 'node4',
-            label: '节点4'
-            // rank: 2,
-            //  shape: "ellipse",
-            //  class:'empty'
+            label: '节点4',
+            data: {
+              type: 'node',
+              typeLabel: '审批'
+            }
           },
           {
             id: 'node5',
-            label: '节点5'
+            label: '节点5',
+            data: {
+              type: 'node',
+              typeLabel: '审批'
+            }
           },
           {
             id: 'node6',
-            label: '节点6'
+            label: '节点6',
+            data: {
+              type: 'node',
+              typeLabel: '审批'
+            }
           },
           {
             id: 'node7',
-            label: '节点7'
+            label: '节点7',
+            data: {
+              type: 'node',
+              typeLabel: '审批'
+            }
           },
           {
             id: 'node8',
-            label: '节点8'
+            label: '节点8',
+            data: {
+              type: 'node',
+              typeLabel: '审批'
+            }
           },
           {
             id: 'node9',
             label: 'END',
-            shape: 'circle',
-            disabled: true,
             data: {
               type: 'end'
             }
           }
         ],
         edges: [
-          //节点之间关系数组
           {
             source: 'node1', // 源头
-            target: 'node2', // 末尾
-            id: 6666 // id
+            target: 'node2' // 末尾
           },
           {
             source: 'node2',
             target: 'node3',
             data: {
               condition:
-                '[发起者][单位(所属单位)] != "长沙综合交通枢纽建设投资有限公司"',
+                '[发起者][单位(所属单位)] != "某地综合交通枢纽建设投资有限公司"',
               describe: '这是描述'
             }
           },
@@ -268,7 +351,6 @@ export default {
       nextNode: '',
       gGraph: new dagreD3.graphlib.Graph({})
         .setGraph({
-          // 初始画布板式
           rankdir: 'LR', //默认'TB'
           // align: 'DL',
           nodesep: 40,
@@ -283,34 +365,63 @@ export default {
     }
   },
   methods: {
+    // 开始节点-菜单筛选
+    filterArr(val) {
+      const filterArr = val.filter(q => {
+        return q.id != 2
+      })
+      return filterArr
+    },
+
+    filterArrEmptyNode(val) {
+      const filterArr = val.filter(q => {
+        return q.id == 1 || q.id == 4
+      })
+      return filterArr
+    },
+
+    // 节点菜单列表过滤
+    editListArrFilter(arr) {
+      const curNodeData = (this.curNodeObj[0] && this.curNodeObj[0].data) || {}
+      if (curNodeData.type === 'start') {
+        return this.filterArr(arr)
+      } else if (curNodeData.type === 'node') {
+        return arr
+      } else {
+        return this.filterArrEmptyNode(arr)
+      }
+    },
+
     upIsStrand(val) {
       this.isStrand = val
     },
-    // 删除节点
-    removeNode(item) {
-      this.gGraph.removeNode(item.id)
-    },
+
     // 生成节点
     setNodeFun() {
-      console.log(this.list, 'this.list----8888')
       this.list.nodeInfos &&
         this.list.nodeInfos.forEach((item, index) => {
           this.gGraph.removeNode(item.id)
-          console.log(item.label, 'label')
-          // this.gGraph.removeEdge(item)
           item.rx = item.ry = 5 //圆角
           if (item.class === 'empty') {
             this.gGraph.setNode(item.id, {
-              style: 'stroke: #B7B7B7;fill:#B7B7B7;stroke-width:0.2px',
-              width: -19, //线条颜色
-              ...item
+              style: 'stroke: #fff;fill:#B7B7B7;stroke-width:1.6px;',
+              width: -20,
+              ...item,
+              shape: 'circle'
             })
           } else {
+            const typeLabelHtml = `[${item.data && item.data.typeLabel}]`
+            const finishedIconHtml = `<img style="position: absolute;right: -14px;top: 16px;width: 18px;" src="${this.finishedIcon}">`
+            const unreadableIconHtml = `<img style="position: absolute;right: -14px;top: 16px;width: 18px;" src="${this.unreadableIcon}">`
             this.gGraph.setNode(item.id, {
               ...item,
               class: `node-style`,
               shape: 'circle',
-              style: `stroke: #fff;stroke-width:5px;${
+              style: `${
+                this.initCurId === item.id
+                  ? 'stroke: #f6b74d;'
+                  : 'stroke: #fff;'
+              }stroke-width:5px;${
                 item.data && item.data.type == 'end'
                   ? 'fill: #b7b7b7;'
                   : item.data && item.data.type == 'start'
@@ -321,19 +432,30 @@ export default {
               label:
                 item.data && item.data.type == 'end'
                   ? '<div style="color:#fff;font-size:12px">END</div>'
-                  : `<div class="node-label-html"><span class="node-label"> <img style="width:18px;height:26px" src="${
-                      this.userIcon
-                    }" alt="" /></i></span><p class="node-label-text" style="  position: absolute;left: -18px;top: 36px;width: 52px;text-align: center; display: block;" ><span>${
+                  : `<div class="node-label-html"><span class="node-label"> <img style="width:24px;margin-top:2px" src="${
+                      item.data.role == 'station'
+                        ? this.stationIcon
+                        : item.data.role == 'role'
+                        ? this.roleIcon
+                        : this.userIcon
+                    }" alt="12" /></i></span>${
+                      item.data.finished
+                        ? finishedIconHtml
+                        : item.data.unreadable
+                        ? unreadableIconHtml
+                        : ''
+                    }<p class="node-label-text" style="position: absolute;left: -19px;top: 22px;width: 62px;text-align: center; display: block;" ><span>${
                       item.label
-                    }</span><span class="process"style=" display: block;opacity: 0.5;font-size: 0.6rem;" >${(item.data &&
-                      item.data.typeLabel) ||
-                      ''}</span></p></div>`
+                    }</span><span class="process"style=" display: block;opacity: 0.5;font-size: 0.6rem;" >${
+                      item.data && item.data.typeLabel ? typeLabelHtml : ''
+                    }</span></p></div>`
               // label: `<span class="node-label">${item.label}</span>`
             })
           }
         })
     },
-    // 生成链接线
+
+    // 生成连接线
     setEdgeFun() {
       this.list.edges = this.list.edges.filter(q => {
         return q.source != q.target
@@ -354,45 +476,37 @@ export default {
             labelType: 'html', //可以设置文本以及 html 格式，默认为文本格式
             label:
               item.data && item.data.condition
-                ? // ? `<div class="line-box"><span class="line-style"><i class="el-icon-connection"></i></span><div class="line-tips"><p class="line-condition-title">分支条件：</p><p>${item.data.condition}</p><p class="line-condition-title">分支描述：</p><p>${item.data.describe}</p></div></div>`
-                  `<div class="line-box"><span class="line-style" style="  display: block;width: 22px;height: 22px;background-color: #b7b7b7;border-radius: 50%;cursor: pointer;margin: auto;color: #fff;text-align: center;line-height: 22px;" ><i class="el-icon-connection"></i></span>`
+                ? // `<div class="line-box"><span class="line-style" style="display: block;width: 22px;height: 22px;background-color: #b7b7b7;border-radius: 50%;cursor: pointer;margin: auto;color: #fff;text-align: center;line-height: 22px;" ><i class="el-icon-connection"></i></span>`
+                  `<div class="line-box"><span class="line-style" style="display: block;width: 22px;height: 22px;background-color: #b7b7b7;border-radius: 50%;cursor: pointer;margin: auto;color: #fff;text-align: center;line-height: 22px;" ><img style="width:20px;margin-top:2px" src="${this.conditionIcon}" alt="12" /></span>`
                 : '',
             class: 'edge-line'
           })
         }
       })
     },
+
     //绘制图形
     renderFun() {
       var svgAb = d3.select('svg')
-      // svgAb
-      //   .select('g')
-      //   .exit()
-      //   .remove() //删除以前的节点
       var innerAb = svgAb.select('g')
       var render = new dagreD3.render()
-      console.log(this.gGraph, 'this.gGraph')
       render(innerAb, this.gGraph)
     },
+
+    // 事件触发
     selectEvent() {
       var svg = d3.select('svg'),
         inner = svg.select('g')
       let code
-      // 鼠标右击
-      // inner.selectAll('g.node').on('mousedown', e => {
-      //  e.preventDefault();
-      //   console.log(e, '鼠标右键点击了')
-      // })
-      // mouseover 鼠标经过
+      // 点击连接线条件图标
       inner.selectAll('.edgeLabel').on('click', (e, k, n) => {
         const conditionVal = this.list.edges.filter(q => {
           return q.source == e.v && q.target == e.w
         })
         this.edgeInfo = conditionVal[0]
-        if (this.edgeInfo && this.edgeInfo.data) {
+        if (this.edgeInfo.data && this.edgeInfo.data.condition) {
           this.showEdgeInfoDialog = true
         }
-        console.log(conditionVal, 'conditionVal')
       })
 
       // 点击连接线
@@ -400,12 +514,13 @@ export default {
         code = this.list.edges.filter(item => {
           return item.target == e.w
         })
-        console.log(code, '连接线对象数据')
         this.curEdgeObj = code
         this.showEditLineDialog = true
       })
+
       // 点击节点
       inner.selectAll('g.node').on('click', (e, k, n) => {
+        this.showEditLineDialog = false
         const curNodeSourceArr = this.list.edges.filter(q => {
           return q.source == e
         })
@@ -417,19 +532,25 @@ export default {
             return q
           })
         }
+
         code = this.list.nodeInfos.filter(item => {
           return item.id == e
         })
-        console.log(code, '点击事件')
-        if (code && code[0].disabled) {
+        const codeData = code[0] && code[0].data
+        if (
+          (code[0] && code[0].disabled) ||
+          (codeData && codeData.type === 'end')
+        ) {
           return
         }
 
         this.nodeEditTitle = `操作 (${code && code[0].label})`
         this.showEditDialog = true
         this.curNodeObj = code
+        this.addNodeType = codeData && codeData.type
       })
     },
+
     // 缩放
     scale() {
       var initialScale = this.scaleValue / 100
@@ -448,209 +569,374 @@ export default {
           //     26,
           //   20
           // )
+          // .translate(svgAb.attr('width'), 20)
           .translate(svgAb.attr('width'), 20)
           .scale(initialScale)
       )
       svgAb.attr('height', this.gGraph.graph().height * initialScale + 40)
     },
-    // rightEvent() {
-    //   var svgCanvas = document.getElementById('svg-canvas') //svg
-    //   var myMenu = document.getElementById('myMenu') //右键菜单
-    //   svgCanvas.addEventListener('mouseover', function(e) {
-    //     //监听鼠标右键
-    //     e.preventDefault()
-    //     if (e.target.tagName === 'rect') {
-    //       myMenu.style.top = event.clientY + 'px' //获取鼠标位置
-    //       myMenu.style.left = event.clientX + 'px'
-    //       myMenu.style.display = 'block' //显示相应右键内容
-    //     }
-    //   })
-    //   document.addEventListener('click', event => {
-    //     myMenu.style.display = 'none'
-    //   })
-    // },
-    // 提交添加节点信息
-    sumbitAddNodeFun(arr) {
-      console.log(arr, 'arr')
+
+    // 添加串行节点
+    addCxFun(arr) {
       let e = this.curNodeObj[0].id
-      console.log(this.curNodeObj, '节点对象数据')
-      // 限制已有并行节点点击
-      // let hasArr = []
-      // let isReturn = true
-      // this.list.edges.map(q => {
-      //   console.log(q, '----q')
-      //   if (hasArr.includes(this.curNodeObj[0].source)) {
-      //     console.log(q, '打断了q')
-      //     isReturn = false
-      //   }
-      //   hasArr.push(q.source)
+      // 添加串行节点
+      // this.list.nodeInfos = this.list.nodeInfos.concat({
+      //   id: e + '11',
+      //   label: '节点' + e + '11'
       // })
-      // if (!isReturn) {
-      //   return
-      // }
-      // {
-      //   hasArr = []
-      // }
-      // isStrand 1为串行 2为并行 3为会签（给当并行叠加并行）
-      if (this.isStrand == 1) {
-        //串行
-        // 添加串行节点
-        this.list.nodeInfos = this.list.nodeInfos.concat({
-          id: e + '11',
-          label: '节点' + e + '11'
+      // this.list.nodeInfos = this.list.nodeInfos.concat(arr[0])
+      this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      this.list.edges = this.list.edges.map(q => {
+        if (q.source == e) {
+          this.nextNode = q.target
+          q.target = arr[0].id
+        }
+        return q
+      })
+      // 动态遍历多条节点
+      const midItemArr =
+        arr &&
+        arr.map(q => {
+          return q.id
         })
-        // 添加串行节点链接关系
-        this.list.edges = this.list.edges.map(q => {
-          if (q.source == e) {
-            this.nextNode = q.target
-            q.target = e + '11'
+      let midItemObjArr =
+        midItemArr &&
+        midItemArr.map((q, index) => {
+          let obj = ''
+          if (midItemArr[index + 1]) {
+            obj = {
+              source: q,
+              target: midItemArr[index + 1]
+            }
           }
-          return q
+          return obj
         })
-        this.list.edges =
-          this.list.edges &&
-          this.list.edges.concat({
-            source: e + '11',
-            target: this.nextNode
-          })
+      const midItemObjArrFilter =
+        midItemObjArr &&
+        midItemObjArr.filter(q => {
+          return q.source
+        })
+      // 添加连接关系
+      this.list.edges =
+        this.list.edges &&
+        this.list.edges.concat(...midItemObjArrFilter, {
+          source: arr.pop().id,
+          // source: arr[0].id,
+          target: this.nextNode
+        })
 
-        // 存储并重新渲染
-        localStorage.setItem('list', JSON.stringify(this.list))
-        // window.location.reload()
-        this.initFlow()
-      } else if (this.isStrand == 2) {
-        // 并行
+      // 添加串行节点链接关系
+      // this.list.edges = this.list.edges.map(q => {
+      //   if (q.source == e) {
+      //     this.nextNode = q.target
+      //     q.target = e + '11'
+      //   }
+      //   return q
+      // })
+      // this.list.edges =
+      //   this.list.edges &&
+      //   this.list.edges.concat({
+      //     source: e + '11',
+      //     target: this.nextNode
+      //   })
 
-        // 添加空节点（创建空节点视觉优化链接线汇交点）
-        this.list.nodeInfos = this.list.nodeInfos.concat({
-          id: e + 'empty01',
+      localStorage.setItem('list', JSON.stringify(this.list))
+      this.initFlow(1)
+    },
+
+    // 添加并行节点
+    addBxFun(arr) {
+      let e = this.curNodeObj[0].id
+      if (arr && arr.length < 2) {
+        this.$message.error('添加并行节点至少选择两条数据')
+        return
+      }
+
+      const randomNum = Math.floor(Math.random() * 100) + ''
+      // 添加空节点（创建空节点视觉优化链接线汇交点）
+      this.list.nodeInfos = this.list.nodeInfos.concat(
+        {
+          id: e + randomNum + 'empty01',
           label: '',
           shape: 'ellipse',
           class: 'empty'
+        },
+        {
+          id: e + randomNum + 'empty01empty01',
+          label: '',
+          shape: 'ellipse',
+          class: 'empty'
+        }
+      )
+      this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+      this.list.edges = this.list.edges.map(q => {
+        if (q.source == e) {
+          this.nextNode = q.target
+          q = ''
+        }
+        return q
+      })
+      this.list.edges = this.list.edges.filter(q => {
+        return q
+      })
+      // 添加空节点链接关系
+      this.list.edges =
+        this.list.edges &&
+        this.list.edges.concat({
+          source: e + randomNum + 'empty01empty01',
+          target: this.nextNode
         })
-        // 添加并行节点
-        this.list.nodeInfos = this.list.nodeInfos.concat(
-          {
-            id: e + '21',
-            label: '节点' + e + '21'
-          },
-          {
-            id: e + '22',
-            label: '节点' + e + '22'
-          }
+      // 动态遍历添加多条并行节点
+      const midItemArr =
+        arr &&
+        arr.map(q => {
+          return q.id
+        })
+      const midItemObjBx1 = midItemArr.map(q => {
+        let obj = {
+          source: e + randomNum + 'empty01',
+          target: q
+        }
+        return obj
+      })
+      const midItemObjBx2 = midItemArr.map(q => {
+        let obj = {
+          source: q,
+          target: e + randomNum + 'empty01empty01'
+        }
+        return obj
+      })
+
+      // 添加并行节点链接关系2
+      this.list.edges =
+        this.list.edges &&
+        this.list.edges.concat(
+          { source: e, target: e + randomNum + 'empty01' },
+          ...midItemObjBx1,
+          ...midItemObjBx2
         )
 
-        //添加并行节点链接关系1
-        this.list.edges = this.list.edges.map(q => {
-          if (q.source == e) {
-            this.nextNode = q.target
-            q.target = e + '21'
+      localStorage.setItem('list', JSON.stringify(this.list))
+      this.initFlow(1)
+    },
+
+    // 添加会签节点
+    addHqFun(arr) {
+      let e = this.curNodeObj[0].id
+      const hqStartObj = this.list.edges.filter(q => {
+        return q.target == e
+      })
+      const hqStartId = hqStartObj[0].source
+      const hqEndObj = this.list.edges.filter(q => {
+        return q.source == e
+      })
+      const hqEndId = hqEndObj[0].target
+      this.list.nodeInfos = this.list.nodeInfos.concat(arr)
+
+      // 若在无并行场景添加会签
+      const isCxEnd = hqEndId.includes('empty01')
+      const isCxStart = hqStartId.includes('empty01')
+      const isCx = !(isCxEnd && isCxStart)
+      if (isCx) {
+        this.list.nodeInfos = this.list.nodeInfos.concat(
+          {
+            id: e + 'empty01',
+            label: '',
+            shape: 'ellipse',
+            class: 'empty'
+          },
+          {
+            id: e + 'empty01empty01',
+            label: '',
+            shape: 'ellipse',
+            class: 'empty'
           }
+        )
+        // 删除原来的对象重新生成
+        this.list.edges = this.list.edges.filter(q => {
+          return q.source != e && q.target != e
+        })
+        this.list.edges = this.list.edges.filter(q => {
           return q
         })
-        // 添加空节点链接关系
-        this.list.edges =
-          this.list.edges &&
-          this.list.edges.concat({
-            source: e + 'empty01',
-            target: this.nextNode
-          })
-        // 添加并行节点链接关系2
+      }
+      // 动态遍历添加多条会签节点
+      const midItemArr =
+        arr &&
+        arr.map(q => {
+          return q.id
+        })
+      const midItemObjHq1 = midItemArr.map(q => {
+        let obj = {
+          source: isCx ? e + 'empty01' : hqStartId,
+          target: q
+        }
+        return obj
+      })
+      const midItemObjHq2 = midItemArr.map(q => {
+        let obj = {
+          source: q,
+          // target: hqEndId
+          target: isCx ? e + 'empty01empty01' : hqEndId
+        }
+        return obj
+      })
+      // 添加会签链接关系
+      this.list.edges =
+        this.list.edges &&
+        this.list.edges.concat(...midItemObjHq1, ...midItemObjHq2)
+      // 串行添加会签特殊处理
+      if (isCx) {
         this.list.edges =
           this.list.edges &&
           this.list.edges.concat(
+            {
+              source: e + 'empty01',
+              target: e
+            },
             {
               source: e,
-              target: e + '22'
+              target: e + 'empty01empty01'
             },
             {
-              source: e + '21',
-              // target: this.nextNode,
-              target: e + 'empty01'
+              source: e + 'empty01empty01',
+              target: hqEndId
             },
-            {
-              source: e + '22',
-              // target: this.nextNode,
-              target: e + 'empty01'
-            }
-          )
-
-        // 存储并重新渲染
-        localStorage.setItem('list', JSON.stringify(this.list))
-        // window.location.reload()
-        this.initFlow()
-      } else {
-        // 会签
-        const hqStartObj = this.list.edges.filter(q => {
-          return q.target == e
-        })
-        const hqStartId = hqStartObj[0].source
-        const hqEndObj = this.list.edges.filter(q => {
-          return q.source == e
-        })
-        const hqEndId = hqEndObj[0].target
-
-        // 添加会签节点
-        this.list.nodeInfos = this.list.nodeInfos.concat({
-          id: e + '31',
-          label: '节点' + e + '31'
-        })
-
-        // 添加会签链接关系
-        this.list.edges =
-          this.list.edges &&
-          this.list.edges.concat(
             {
               source: hqStartId,
-              target: e + '31'
-            },
-            {
-              source: e + '31',
-              target: hqEndId
+              target: e + 'empty01'
             }
           )
-        //  存储并重新渲染
-        localStorage.setItem('list', JSON.stringify(this.list))
-        // window.location.reload()
-        this.initFlow()
       }
-      this.$message.success('添加节点成功')
+      localStorage.setItem('list', JSON.stringify(this.list))
+      this.initFlow(1)
     },
+
+    // 添加下节点并行
+    addNextBxFun(arr) {
+      let e = this.curNodeObj[0].id
+      const nextNodeArr = this.list.edges.filter(q => {
+        return q.source == this.curNodeObj[0].id
+      })
+      this.curNodeObj = this.list.nodeInfos.filter(q => {
+        return q.id == (nextNodeArr && nextNodeArr[0].target)
+      })
+      if (
+        (this.curNodeObj[0] && this.curNodeObj[0].id.includes('empty01')) ||
+        this.curNodeObj[0].data.type === 'end'
+      ) {
+        this.$message.error('下节点不可添加并行节点')
+        return
+      }
+      this.addHqFun(arr)
+    },
+
+    // 取出两个数组相同的元素
+    getArrRepeatFun(arr1, arr2) {
+      let newArr = []
+      for (let i = 0; i < arr2.length; i++) {
+        for (let j = 0; j < arr1.length; j++) {
+          if (arr1[j] === arr2[i]) {
+            newArr.push(arr1[j])
+          }
+        }
+      }
+      return newArr
+    },
+
+    // 提交添加节点信息
+    sumbitAddNodeFun(arr) {
+      // 判断流程中是否已有选中节点
+      const selectedArr = arr.map(q => {
+        return q.id
+      })
+      const flowchartArr = this.list.nodeInfos.map(q => {
+        return q.id
+      })
+      const repeatArr = this.getArrRepeatFun(flowchartArr, selectedArr)
+      if (repeatArr && repeatArr.length > 0) {
+        this.$message.error('所选节点有与流程中节点重复，请重新选择其他节点')
+        return
+      }
+      // isStrand 1为串行 2为并行 3为会签 4为下节点并行
+      switch (this.isStrand) {
+        case 1:
+          this.addCxFun(arr)
+          break
+        case 2:
+          this.addBxFun(arr)
+          break
+        case 3:
+          this.addHqFun(arr)
+          break
+        case 4:
+          this.addNextBxFun(arr)
+          break
+      }
+      // this.$message.success('添加节点成功')
+    },
+
     cancelAddNode() {
       this.showAddNodeDialog = false
     },
+
     cancelInfoNode() {
       this.showInfoNodeDialog = false
     },
+
     cancelAddCondition() {
       this.showAddCondtionDialog = false
     },
+
     cancelDialog() {
       this.showEdgeInfoDialog = false
     },
-    // 节点属性配置更新
+
+    // 节点属性修改
     sumbitNodeInfo(val) {
       this.list.nodeInfos = this.list.nodeInfos.map(q => {
         if (q.id == val.id) {
           q.label = val.label
+          q.data.typeLabel = `[${val.data && val.data.typeLabel}]`
         }
         return q
       })
       localStorage.setItem('list', JSON.stringify(this.list))
       this.initFlow()
     },
+
+    // 删除连接条件
+    deleteCondtion() {
+      this.$confirm(`此操作将永久删除该条件, 是否继续?`, '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        this.list.edges = this.list.edges.map(q => {
+          if (this.curEdgeObj[0] && this.curEdgeObj[0].target == q.target) {
+            q.data = {}
+          }
+          return q
+        })
+        this.showEditLineDialog = false
+        localStorage.setItem('list', JSON.stringify(this.list))
+        this.initFlow()
+      })
+    },
+
+    // 添加连接条件
     sumbitAddCondition(obj) {
       console.log(obj, '条件信息')
       this.list.edges = this.list.edges.map(q => {
         if (this.curEdgeObj[0] && this.curEdgeObj[0].target == q.target) {
-          q.data = obj
+          q.data = { ...obj }
         }
         return q
       })
-      // 存储并重新渲染
       localStorage.setItem('list', JSON.stringify(this.list))
-      window.location.reload()
+      this.initFlow()
     },
+
     // 禁止节点事件
     initDisabled() {
       let hasArr = []
@@ -669,13 +955,14 @@ export default {
         return q
       })
     },
-    // 点击操作列表
+
+    // 点击节点操作列表
     nodeClickEvent(id) {
+      this.showEditDialog = false
       switch (id) {
         case 1:
           console.log(id, '增加节点')
           this.showAddNodeDialog = true
-          this.showEditDialog = false
           break
         case 2:
           console.log(id, '删除节点')
@@ -684,12 +971,17 @@ export default {
         case 3:
           console.log(id, '节点属性')
           this.showInfoNodeDialog = true
-          this.showEditDialog = false
+          break
+        case 4:
+          console.log(id, '下节点并行')
+          this.showAddNodeDialog = true
           break
       }
     },
-    // 点击链接线操作列表
+
+    // 点击连接线操作列表
     edgesClickEvent(id) {
+      this.showEditLineDialog = false
       switch (id) {
         case 1:
           console.log(id, '自动条件')
@@ -701,8 +993,16 @@ export default {
         case 3:
           console.log(id, '排它条件')
           break
+        case 4:
+          console.log(id, '分支描述')
+          break
+        case 5:
+          console.log(id, '删除条件')
+          this.deleteCondtion()
+          break
       }
     },
+
     // 删除节点
     deleteNode() {
       this.$confirm(
@@ -719,8 +1019,6 @@ export default {
           this.list.nodeInfos.forEach((item, index) => {
             this.gGraph.removeNode(item.id)
           })
-
-        // this.gGraph.removeNode(this.curNodeObj[0].id)
         this.showEditDialog = false
         this.list.nodeInfos = this.list.nodeInfos.filter(q => {
           return q.id != this.curNodeObj[0].id
@@ -737,35 +1035,62 @@ export default {
             q.source != this.curNodeObj[0].id
           )
         })
+
+        const tnSource = targetNode[0] && targetNode[0].source
+        const snTarget = sourceNode[0] && sourceNode[0].target
         const repeatNode = this.list.edges.filter(q => {
-          return (
-            q.source == targetNode[0].source || q.target == sourceNode[0].target
-          )
+          return q.source == tnSource || q.target == snTarget
         })
-        if (repeatNode && repeatNode.length < 1) {
+        if (repeatNode && repeatNode.length < 2) {
           this.list.edges = this.list.edges.concat({
-            source: targetNode[0].source,
-            target: sourceNode[0].target
+            source: tnSource,
+            target: snTarget
           })
+        } else {
+          // 并行多节点上添加的串行对其删除做兼容处理
+          const commonSourceArr =
+            repeatNode &&
+            repeatNode.filter(q => {
+              return q.source == repeatNode[0].source
+            })
+          const commonTargetArr =
+            repeatNode &&
+            repeatNode.filter(q => {
+              return q.target == repeatNode[0].target
+            })
+          const commonSourceArrLength =
+            commonSourceArr && commonSourceArr.length
+          const commonTargetArrLength =
+            commonTargetArr && commonTargetArr.length
+          const repeatNodeLength = repeatNode && repeatNode.length
+          if (
+            commonSourceArrLength === repeatNodeLength ||
+            commonTargetArrLength === repeatNodeLength
+          ) {
+            this.list.edges = this.list.edges.concat({
+              source: tnSource,
+              target: snTarget
+            })
+          }
         }
         this.filterEmptyNode()
-        // 存储并重新渲染
         localStorage.setItem('list', JSON.stringify(this.list))
-        // window.location.reload()
         this.initFlow()
       })
     },
+
+    // 导出缩略图
     svgToPng() {
       const node = document.querySelector('svg')
-      // const node = d3.select('svg')
       this.covertSVG2Image(
         node,
         '缩略图',
         window.innerWidth,
-        window.document.querySelector('.svg-box').clientHeight - 100
+        window.document.querySelector('.svg-box').clientHeight
       )
     },
-    // 导出svg为图片
+
+    // svg转png封装
     covertSVG2Image(node, name, width, height, type = 'png') {
       let serializer = new XMLSerializer()
       let source =
@@ -779,7 +1104,12 @@ export default {
       canvas.height = height
       let context = canvas.getContext('2d')
       context.fillStyle = '#fff'
-      context.fillRect(0, 0, 10000, 10000)
+      context.fillRect(
+        0,
+        0,
+        window.innerWidth,
+        window.document.querySelector('.svg-box').clientHeight
+      )
       image.onload = function() {
         context.drawImage(image, 0, 0)
         let a = document.createElement('a')
@@ -788,6 +1118,7 @@ export default {
         a.click()
       }
     },
+
     // 合并连接线空节点之前不可触发事件
     initEdgesEvent() {
       this.list.nodeInfos = this.list.nodeInfos.map(q => {
@@ -796,10 +1127,10 @@ export default {
           this.list.edges = this.list.edges.map(j => {
             if (q.id == j.target) {
               j.empty = true
-              console.log(j, 'j-==-=-=-==')
+              console.log(j, 'j')
             } else {
               // target包含0则判断为空节点
-              if (j.target.indexOf('empty01') == -1) {
+              if (j.target.indexOf('empty01empty01') == -1) {
                 j.empty = false
               }
             }
@@ -809,6 +1140,7 @@ export default {
         return q
       })
     },
+
     // 遍历去掉删除节点后串行中的空节点
     filterEmptyNode() {
       this.list.nodeInfos = this.list.nodeInfos.map(q => {
@@ -826,15 +1158,17 @@ export default {
           console.log(emptybefore, 'emptybefore')
           console.log(emptyAfter, 'emptyAfter')
 
-          if (emptybefore && emptybefore.length < 2) {
+          if (emptybefore && emptybefore.length < 2 && emptyAfter.length < 2) {
             this.list.edges = this.list.edges.filter(k => {
               return q.id != k.target && q.id != k.source
             })
             this.list.edges = this.list.edges.concat({
-              source: emptybefore[0].source,
-              target: emptyAfter[0].target
+              source: emptybefore[0] && emptybefore[0].source,
+              target: emptyAfter[0] && emptyAfter[0].target
             })
             q = ''
+          } else {
+            // 处理并行2条以上的场景
           }
         }
         return q
@@ -843,67 +1177,73 @@ export default {
         return q != ''
       })
     },
-    // 多源头连接线合并
-    sourceEdgesInit() {
-      let hasArr = []
-      let repSource = ''
-      this.list.edges = this.list.edges.map(q => {
-        if (hasArr.includes(q.source)) {
-          repSource = q.source
-          // this.list.nodeInfos = this.list.nodeInfos.map(j => {
-          //   if (j.id == q.source) {
-          //     console.log(q, '打断了q')
-          //     j.disabled = true
-          //   }
-          //   return j
-          // })
+
+    // 获取鼠标位置触发事件
+    initEventMenu() {
+      var edgeMenu = document.getElementById('edgeMenuDialog') //右键菜单
+      var nodeMenu = document.getElementById('nodeMenuDialog') //右键菜单
+      document.addEventListener('click', function(e) {
+        console.log(e.clientX)
+        console.log(e.clientY)
+        this.clientPosition = {
+          left: e.clientX,
+          top: e.clientY
         }
-        hasArr.push(q.source)
-        return q
+        edgeMenu.style.top = e.clientY + 10 + 'px' //获取鼠标位置
+        edgeMenu.style.left = e.clientX + 10 + 'px'
+        nodeMenu.style.top = e.clientY + 10 + 'px' //获取鼠标位置
+        nodeMenu.style.left = e.clientX + 10 + 'px'
+        console.log(this.clientPosition)
       })
     },
-    // 渲染流程图
-    initFlow() {
+
+    // 初始化流程图
+    initFlow(num) {
       this.initDisabled()
       this.initEdgesEvent()
       this.setNodeFun()
       this.setEdgeFun()
-      console.log(this.list, 'list')
       this.renderFun()
       this.selectEvent()
+      this.scale()
+
+      if (num === 1) {
+        this.$message.success('添加节点成功')
+        this.isStrand = 1
+      }
     }
   },
   created() {
     this.list = JSON.parse(localStorage.getItem('list')) || this.list
-    // this.initDisabled()
-    // this.initEdgesEvent()
+    // this.list = mockList
   },
   mounted() {
     this.initFlow()
-    this.scale()
+    this.initEventMenu()
   }
 }
 </script>
 
-<style lang="less">
-* {
-  margin: 0;
+<style lang="less" scoped>
+ul {
   padding: 0;
+  margin: 0;
   list-style: none;
 }
 .flow-chart {
   width: 100%;
   height: 100%;
-  // border: solid 1px #666;
 }
 .flowchart {
-  height: calc(100% - 80px);
-  padding-top: 80px;
-  // overflow: auto;
+  // height: calc(100% - 80px);
+  min-height: 100%;
+  background: url('~@/assets/img/background.png') repeat 0 0;
+  background-size: 18px 18px;
   .svg-box {
     width: 100%;
-    height: 100%;
-    background-color: #f5f5f5;
+    // background-color: #f5f5f5;
+    border: dashed 2px #f0f0f0;
+    box-sizing: border-box;
   }
 }
 svg {
@@ -913,9 +1253,6 @@ svg {
   color: #fff;
 }
 .node rect {
-  // stroke: #606266;
-  // fill: #fff;
-  // stroke: #4b90de
   stroke: #fff;
   fill: #4b90de;
   stroke-width: 2px;
@@ -936,18 +1273,6 @@ svg {
   stroke-width: 1px;
 }
 
-// .line-style {
-//   display: block;
-//   width: 22px;
-//   height: 22px;
-//   background-color: #b7b7b7;
-//   border-radius: 50%;
-//   cursor: pointer;
-//   margin: auto;
-//   color: #fff;
-//   text-align: center;
-//   line-height: 22px;
-// }
 .line-condition-title {
   color: #4b90de;
 }
@@ -979,17 +1304,11 @@ svg {
     opacity: 0.5;
     font-size: 0.6rem;
   }
-  // display: contents;
-  // color: #fff;
-  // font-size: 12px;
 }
 
-.edit-list-dialog {
+::v-deep .edit-list-dialog {
   .el-dialog__body {
     padding: 0 20px 20px 20px !important;
-  }
-  .el-dialog__title {
-    // font-size: 0.8rem;
   }
 }
 .edit-list {
@@ -999,12 +1318,14 @@ svg {
     justify-content: space-between;
     height: 30px;
     line-height: 30px;
+    font-size: 14px;
   }
   li :hover {
-    opacity: 0.7;
+    color: #4b90de;
   }
 }
-.line-box:hover {
+
+::v-deep .line-box:hover {
   .line-style {
     background-color: #f5a623 !important;
   }
@@ -1015,19 +1336,18 @@ svg {
 .edgePath marker path {
   stroke-width: 0px !important;
 }
-.edge-line path:hover {
+::v-deep .edge-line path:hover {
   stroke: #f5a623 !important;
 }
-.edge-line path:focus {
-  // fill: #666;
-  // stroke: red !important;
+
+::v-deep .edge-line path:focus {
+  stroke: red !important;
 }
 .line-box {
   max-width: 180px;
   position: relative;
 }
 .line-tips {
-  // display: contents;
   visibility: hidden;
   white-space: normal;
   position: absolute;
@@ -1042,7 +1362,7 @@ svg {
     font-size: 12px;
   }
 }
-.node-style {
+::v-deep .node-style {
   cursor: pointer;
   fill: #4b90de;
   foreignObject {
@@ -1069,12 +1389,13 @@ svg {
   background-color: #dcdcdc;
 }
 .btns-area {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   display: flex;
   flex-flow: row-reverse;
   padding: 20px;
+  // background-color: #fff;
 }
 .scale-box {
   display: flex;
@@ -1091,5 +1412,28 @@ svg {
   .scale-icon {
     margin-top: 8px;
   }
+}
+.dialog-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0);
+}
+.edit-list-position {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border: solid 1px #dcdcdc;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px 16px;
+}
+.edge-edit-list {
+  width: 80px;
+}
+.node-edit-list {
+  width: 160px;
 }
 </style>

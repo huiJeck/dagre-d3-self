@@ -150,7 +150,6 @@ export default {
         this.$message.error('节点不能与流程中的重复')
         return
       }
-      alert()
       this.selectedValue.push(this.clickObj)
     },
     itemSelected(item) {
