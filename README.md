@@ -14,3 +14,6 @@ yarn serve
 ![](/截图2.png)
 
 ![](/截图3.png)
+
+### 更完整的流程引擎解决方案
+https://github.com/huiJeck/flow-design-vue
